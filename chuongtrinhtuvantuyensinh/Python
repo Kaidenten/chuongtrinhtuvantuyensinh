@@ -1,0 +1,531 @@
+import re
+import pandas as pd
+import tkinter as tk
+from tkinter import scrolledtext
+import textwrap
+
+# ========================= ĐỌC FILE CSV ===========================
+df = pd.read_csv("dulieutruong.csv", delimiter=";", encoding="utf-8")
+danh_sach_truong = sorted(df["Trường"].dropna().unique())
+tat_ca_khoi = ["A00", "A01", "C00", "D01", "B00"]
+nganh_hoc = [
+            "Y khoa", 
+            "Công nghệ thông tin", 
+            "Kinh tế",
+            "Kinh tế",
+            "Sư phạm",
+            "Ngôn ngữ",
+            "Kỹ thuật Cơ điện tử",
+            "Kế toán",
+            "Kiểm toán",
+            "Luật",
+            "Marketing",
+            "Logistics",
+            "Kỹ thuật cơ khí",
+            "Kỹ thuật ô tô",
+            "Xây dựng",
+            "Thương mại điện tử",
+            "Quản trị kinh doanh"
+]
+rename_map = {
+    "Trường": "Trường",
+    "Ngành": "Ngành",
+    "Chuyên ngành": "Chuyên ngành",
+    "Điểm chuẩn": "Điểm",
+    "Khối thi": "Khối"
+}
+
+
+
+df = df.rename(columns={c.strip(): rename_map.get(c.strip(), c.strip()) for c in df.columns})
+
+if "Điểm" in df.columns:
+    df["Điểm"] = df["Điểm"].astype(str).str.replace(",", ".").astype(float)
+
+
+print(df.columns)
+
+# ========================= XỬ LÝ CHATBOT ===========================
+def normalize_text(s):
+    return str(s).lower().strip()
+
+def parse_input(user_input):
+    diem = re.findall(r"\d+[.,]?\d*", user_input)
+    diem = float(diem[0].replace(",", ".")) if diem else None
+    user_norm = normalize_text(user_input)
+
+    nganh_synonyms = {
+        "y": "Y khoa",
+        "y khoa": "Y khoa",
+        "cntt": "Công nghệ thông tin",
+        "công nghệ thông tin": "Công nghệ thông tin",
+        "kt": "Kinh tế",
+        "kinh tế": "Kinh tế",
+        "sư phạm": "Sư phạm",
+        "ngôn ngữ": "Ngôn ngữ",
+        "cơ điện tử": "Kỹ thuật Cơ điện tử",
+        "kế toán": "Kế toán",
+        "kiểm toán": "Kiểm toán",
+        "luật": "Luật",
+        "marketing": "Marketing",
+        "logistics": "Logistics",
+        "cơ khí": "Kỹ thuật cơ khí",
+        "ô tô": "Kỹ thuật ô tô",
+        "xây dựng": "Xây dựng",
+        "thương mại điện tử": "Thương mại điện tử",
+        "quản trị kinh doanh": "Quản trị kinh doanh",
+        "qtkd" :"Quản trị kinh doanh"
+    }
+
+    nganh = None
+    for key, val in nganh_synonyms.items():
+        if key in user_norm:
+            nganh = val
+            break
+
+    chuyennganh = None
+    for val in df["Chuyên ngành"].dropna().unique():
+        if normalize_text(val) in user_norm:
+            chuyennganh = val
+            break
+    khoithi = None 
+    df["Khối"] = df["Khối"].fillna("").apply(
+    lambda x: [k.strip().upper() for k in x.split(",")] if x else []
+)
+
+
+    return diem, nganh, chuyennganh, khoithi
+
+
+def suggest_school(diem, nganh, chuyennganh, khoithi):
+    results = df.copy()
+
+    if not any([diem, nganh, chuyennganh]):
+        return "Bạn chưa nhập thông tin gì. Hãy chọn một trong các tùy chọn bên dưới!"
+
+    if nganh:
+        results = results[results["Ngành"].apply(normalize_text) == normalize_text(nganh)]
+    elif chuyennganh:
+        results = results[results["Chuyên ngành"].apply(normalize_text) == normalize_text(chuyennganh)]
+    if diem:
+        results = results[results["Điểm"] <= diem]
+    if khoithi:
+        results = results[results["Khối"].apply(normalize_text) == normalize_text(chuyennganh)]
+
+    if results.empty:
+        return "Không tìm thấy trường phù hợp với yêu cầu của bạn."
+
+    results = results.sort_values(by="Điểm", ascending=False)
+
+    ans = "Các trường phù hợp:\n"
+    for _, row in results.iterrows():
+        ans += f"- {row['Trường']} ({row['Ngành']}-{row['Chuyên ngành']}, {row['Điểm']} điểm, {row['Khối']})\n"
+    return ans
+
+
+def chatbot_response(user_msg):
+    diem, nganh, chuyennganh, khoithi = parse_input(user_msg)
+    return suggest_school(diem, nganh, chuyennganh, khoithi)
+
+
+# ========================= GIAO DIỆN MESSENGER ===========================
+def start_move(event):
+    root.x = event.x
+    root.y = event.y
+
+def stop_move(event):
+    root.x = None
+    root.y = None
+
+def do_move(event):
+    x = event.x_root - root.x
+    y = event.y_root - root.y
+    root.geometry(f"+{x}+{y}")
+
+def close_app():
+    root.destroy()
+
+
+root = tk.Tk()
+root.overrideredirect(True)
+root.config(bg="#1E1E1E")
+
+title_bar = tk.Frame(root, bg="#3A3B3C", height=30)
+title_bar.pack(fill="x")
+
+title_label = tk.Label(title_bar, text="Chatbot Tư Vấn Chọn Trường", bg="#3A3B3C", fg="#E4E6EB")
+title_label.pack(side="left", padx=10)
+
+close_btn = tk.Button(title_bar, text="✖", bg="#242526", fg="white", bd=0, command=close_app)
+close_btn.pack(side="right", padx=8)
+
+title_bar.bind("<ButtonPress-1>", start_move)
+title_bar.bind("<ButtonRelease-1>", stop_move)
+title_bar.bind("<B1-Motion>", do_move)
+
+
+# Căn giữa
+width, height = 610, 600
+x = (root.winfo_screenwidth() // 2) - (width // 2)
+y = (root.winfo_screenheight() // 2) - (height // 2)
+root.geometry(f"{width}x{height}+{x}+{y}")
+
+# KHUNG CHAT
+chat_frame = tk.Frame(root, bg="#242526")
+chat_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+canvas = tk.Canvas(chat_frame, bg="#242526", highlightthickness=0)
+scrollbar = tk.Scrollbar(chat_frame, command=canvas.yview)
+scrollable_frame = tk.Frame(canvas, bg="#242526")
+
+scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+canvas.configure(yscrollcommand=scrollbar.set)
+canvas.pack(side="left", fill="both", expand=True)
+scrollbar.pack(side="right", fill="y")
+
+
+# =================== BONG BÓNG TIN NHẮN =================
+
+def action_nhap_nganh():
+    create_bubble(
+        scrollable_frame,
+        "Chatbot: Bạn muốn tìm trường theo ngành gì?",
+        "#3A3B3C",
+        "#E4E6EB",
+        "left"
+    )
+    entry.bind("<Return>", search_nganh)
+
+
+def search_nganh(event=None):
+    user_text = entry.get().strip()
+    entry.delete(0, tk.END)
+
+    create_bubble(scrollable_frame, user_text, "#005CFF", "white", "right")
+    nganh = user_text.lower()
+    result = df[df["Ngành"].str.lower().str.contains(nganh, na=False)]
+
+    if result.empty:
+        bot_reply = "Không tìm thấy trường nào với ngành bạn nhập."
+    else:
+        bot_reply = "Các trường phù hợp:\n\n"
+        for _, row in result.iterrows():
+            bot_reply += f"• {row['Trường']} ({row['Ngành']}, {row['Điểm']} điểm, {row['Khối']})\n"
+
+    # bot trả lời
+    create_bubble(scrollable_frame, "Chatbot: " + bot_reply, "#3A3B3C", "#E4E6EB", "left")
+
+    entry.bind("<Return>", send_message)
+
+    # Cuộn xuống
+    canvas.update_idletasks()
+    canvas.yview_moveto(1.0)
+
+
+def action_nhap_diem_so():
+    create_bubble(
+        scrollable_frame,
+        "Chatbot: Bạn được bao nhiêu điểm?",
+        "#3A3B3C",
+        "#E4E6EB",
+        "left"
+    )
+    
+    entry.bind("<Return>", step2_nhap_khoi)
+
+
+
+
+
+
+def step2_nhap_khoi(event=None):
+    global temp_score, temp_khoi
+
+    user_text = entry.get().strip().upper()
+    entry.delete(0, tk.END)
+
+    create_bubble(scrollable_frame, user_text, "#005CFF", "white", "right")
+    match = re.search(r"(\d+[.,]?\d*)", user_text)
+    if match:
+        temp_score = float(match.group(1).replace(",", "."))
+    else:
+        create_bubble(
+            scrollable_frame,
+            "Chatbot: Điểm không hợp lệ! Vui lòng nhập lại.",
+            "#3A3B3C", "#E4E6EB", "left"
+        )
+        entry.bind("<Return>", send_message)
+        return
+
+    create_bubble(
+        scrollable_frame,
+        f"Chatbot: Bạn xét tuyển theo khối nào? (Các khối có trong hệ thống: {', '.join(tat_ca_khoi)})",
+        "#3A3B3C", "#E4E6EB", "left"
+    )
+
+    entry.bind("<Return>", step3_nhap_khoi)
+
+
+def step3_nhap_khoi(event=None):
+    global temp_khoi
+
+    user_text = entry.get().strip().upper()
+    entry.delete(0, tk.END)
+
+    # Hiển thị user bubble
+    create_bubble(scrollable_frame, user_text, "#005CFF", "white", "right")
+
+    if user_text not in tat_ca_khoi:
+        create_bubble(
+            scrollable_frame,
+            f"Chatbot: Khối {user_text} không tồn tại trong dữ liệu! "
+            f"Vui lòng nhập 1 trong các khối sau: {', '.join(tat_ca_khoi)}",
+            "#3A3B3C", "#E4E6EB", "left"
+        )
+        entry.bind("<Return>", step3_nhap_khoi)
+        return
+
+
+    temp_khoi = user_text
+
+    create_bubble(
+        scrollable_frame,
+        f"Chatbot: Bạn muốn xét tuyển vào ngành nào? (Các ngành có trong hệ thống: {', '.join(nganh_hoc)})",
+        "#3A3B3C", "#E4E6EB", "left"
+    )
+
+    entry.bind("<Return>", step4_nhap_nganh)
+
+def step4_nhap_nganh(event=None):
+    global temp_khoi, temp_score
+
+    nganh_user = entry.get().strip()
+    entry.delete(0, tk.END)
+
+    create_bubble(scrollable_frame, nganh_user, "#005CFF", "white", "right")
+
+    # Chuẩn hóa ngành
+    nganh_norm = nganh_user.lower()
+
+    # === 1. Lọc theo ngành ===
+    ket_qua_nganh = df[df["Ngành"].str.lower() == nganh_norm]
+
+    if ket_qua_nganh.empty:
+        create_bubble(
+            scrollable_frame,
+            f"Chatbot: Không tìm thấy ngành '{nganh_user}' trong cơ sở dữ liệu!",
+            "#3A3B3C", "#E4E6EB", "left"
+        )
+        entry.bind("<Return>", step4_nhap_nganh)
+        return
+
+    # === 2. Lọc theo khối ===
+    ket_qua_khoi = ket_qua_nganh[ket_qua_nganh["Khối"].apply(lambda arr: temp_khoi in arr)]
+
+    if ket_qua_khoi.empty:
+        create_bubble(
+            scrollable_frame,
+            f"Chatbot: ⚠ Ngành '{nganh_user}' KHÔNG tuyển khối {temp_khoi}.",
+            "#3A3B3C", "#E4E6EB", "left"
+        )
+        entry.bind("<Return>", step4_nhap_nganh)
+        return
+
+    # === 3. Lọc theo điểm <= điểm thí sinh ===
+    ket_qua_diem = ket_qua_khoi[ket_qua_khoi["Điểm"] <= temp_score]
+
+    if ket_qua_diem.empty:
+        create_bubble(
+            scrollable_frame,
+            f"Chatbot: ⚠ Không có trường nào tuyển ngành '{nganh_user}' (khối {temp_khoi}) với điểm {temp_score}.",
+            "#3A3B3C", "#E4E6EB", "left"
+        )
+        entry.bind("<Return>", send_message)
+        return
+
+    # === 4. Lấy TOP 5 theo điểm gần nhất (điểm cao nhất nhưng <= điểm bạn nhập) ===
+    ket_qua_top5 = ket_qua_diem.sort_values(by="Điểm", ascending=False).head(5)
+
+    # === 5. Hiển thị (gộp thành 1 bubble duy nhất) ===
+    output_text = f"- TOP 5 TRƯỜNG VÀ NGÀNH CÓ THỂ KHẢ NĂNG ĐỖ GỒM:\n"
+
+    for _, row in ket_qua_top5.iterrows():
+        output_text += (
+        
+        f"- {row['Trường']} | Ngành: {row['Ngành']} | "
+        f"Chuyên ngành: {row['Chuyên ngành']} | Điểm: {row['Điểm']} | "
+        f"Khối: {', '.join(row['Khối'])}\n"
+    )
+
+# Tạo 1 bubble duy nhất chứa toàn bộ kết quả
+    create_bubble(
+     scrollable_frame,
+        output_text.strip(),   # bỏ xuống dòng cuối
+    "#3A3B3C", "#E4E6EB",
+    "left"
+)
+
+
+    entry.bind("<Return>", send_message)
+
+
+
+
+
+            
+
+
+
+def action_xem_danh_sach():
+    danh_sach = sorted(df["Trường"].dropna().unique())
+
+    if not danh_sach:
+        msg = "Không tìm thấy trường nào trong dữ liệu."
+    else:
+        msg = "Danh sách tất cả các trường trong hệ thống:\n\n"
+        for truong in danh_sach:
+            msg += f"• {truong}\n"
+
+    create_bubble(
+        scrollable_frame,
+        "Chatbot: " + msg,
+        bg_color="#3A3B3C",
+        fg_color="#E4E6EB",
+        side="left"
+    )
+
+    canvas.update_idletasks()
+    canvas.yview_moveto(1.0)
+
+
+def rounded_rect(canvas, x1, y1, x2, y2, r, fill):
+    points = [
+        x1+r, y1,
+        x2-r, y1,
+        x2, y1,
+        x2, y1+r,
+        x2, y2-r,
+        x2, y2,
+        x2-r, y2,
+        x1+r, y2,
+        x1, y2,
+        x1, y2-r,
+        x1, y1+r,
+        x1, y1
+    ]
+    canvas.create_polygon(points, smooth=True, fill=fill, outline="")
+    
+
+def create_bubble(master, text, bg_color, fg_color, side="left"):
+    frame = tk.Frame(master, bg="#242526")
+    frame.pack(fill="x", pady=4)
+
+    bubble_canvas = tk.Canvas(frame, bg="#242526", highlightthickness=0)
+
+   
+    bubble_canvas.pack(anchor="e" if side == "right" else "w", padx=20)
+
+    if side == "right":
+        max_width = 420
+    else:
+        max_width = 500
+
+    text_id = bubble_canvas.create_text(
+        20, 20,
+        text=text,
+        fill=fg_color,
+        font=("Arial", 10),
+        anchor="nw",
+        width=max_width,
+        justify="left"
+    )
+
+    x1, y1, x2, y2 = bubble_canvas.bbox(text_id)
+    pad = 12
+    x1 -= pad
+    y1 -= pad
+    x2 += pad
+    y2 += pad
+
+    rounded_rect(bubble_canvas, x1, y1, x2, y2, r=20, fill=bg_color)
+
+    bubble_canvas.tag_raise(text_id)
+
+    bubble_canvas.config(width=x2 + 15, height=y2 + 15)
+
+# Nút lựa chọn
+def create_option_button(master, text, command=None):
+    wrap_width = 260  
+    
+    frame = tk.Frame(master, bg="#242526")
+    frame.pack(fill="x", pady=5)
+
+    btn = tk.Button(
+        frame,
+        text=text,
+        bg="#005CFF",
+        fg="white",
+        font=("Arial", 11, "bold"),
+        relief="flat",
+        padx=12,
+        pady=8,
+        command=command,
+        wraplength=wrap_width,
+        justify="left",
+    )
+
+    btn.pack(anchor="w", padx=20) 
+    return btn
+
+
+def send_message_from_button(text):
+    entry.delete(0, tk.END)
+    entry.insert(0, text)
+    send_message()
+
+
+# Gửi tin nhắn
+def send_message(event=None):
+    user_msg = entry.get().strip()
+    if not user_msg:
+        return
+
+    create_bubble(scrollable_frame, user_msg, "#005CFF", "white", "right")
+
+    bot_msg = chatbot_response(user_msg)
+    create_bubble(scrollable_frame, bot_msg, "#3A3B3C", "#E4E6EB", "left")
+
+    canvas.update_idletasks()
+    canvas.yview_moveto(1.0)
+    entry.delete(0, tk.END)
+
+
+# Bắt đầu khởi động
+create_bubble(scrollable_frame,
+              "Xin chào! Tôi là chatbot tư vấn chọn trường.\nBạn muốn tôi giúp gì?",
+              "#3A3B3C", "#E4E6EB", "left")
+
+option_frame = tk.Frame(scrollable_frame, bg="#242526")
+option_frame.pack(fill="x", pady=5)
+
+create_option_button(option_frame, "Tìm trường theo ngành", action_nhap_nganh)
+create_option_button(option_frame, "Tìm trường theo số điểm", action_nhap_diem_so)
+create_option_button(option_frame, "Xem toàn bộ danh sách trường", action_xem_danh_sach)
+
+
+
+# Ô nhập tin nhắn
+frame = tk.Frame(root, bg="#242526")
+frame.pack(pady=(0, 10))
+
+entry = tk.Entry(frame, width=50, font=("Arial", 12), bg="#E4E6EB", fg="black", relief="flat")
+entry.pack(side="left", padx=(0, 10))
+entry.bind("<Return>", send_message)
+
+send_button = tk.Button(frame, text="Gửi", command=send_message,
+                        bg="#005CFF", fg="white", font=("Arial", 12, "bold"),
+                        activebackground="#0045C4", relief="flat")
+send_button.pack(side="left")
+
+root.mainloop()
