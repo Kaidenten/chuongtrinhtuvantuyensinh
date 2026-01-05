@@ -38,7 +38,6 @@ rename_map = {
 
 # Định nghĩa lại tên cột
 df = df.rename(columns={c.strip(): rename_map.get(c.strip(), c.strip()) for c in df.columns})
-# Xử lý dữ liệu cột
 if "Điểm" in df.columns:
     df["Điểm"] = df["Điểm"].astype(str).str.replace(",", ".").astype(float)
 # Xử lý cột khối nếu có cột thì tách chuỗi thành mảng các khối
@@ -115,7 +114,8 @@ def suggest_school(diem, nganh, chuyennganh, khoithi):
 
     if nganh:
         results = results[results["Ngành"].apply(normalize_text) == normalize_text(nganh)]
-    elif chuyennganh:
+        
+    if chuyennganh:
         results = results[results["Chuyên ngành"].apply(normalize_text) == normalize_text(chuyennganh)]
     
     if diem:
@@ -142,10 +142,8 @@ def chatbot_response(user_msg):
 # Giao diện Tkinter
 def start_move(event):
     root._drag_data = {"x": event.x, "y": event.y}
-
 def stop_move(event):
     root._drag_data = None
-
 def do_move(event):
     if root._drag_data:
         deltax = event.x - root._drag_data["x"]
@@ -153,7 +151,6 @@ def do_move(event):
         x = root.winfo_x() + deltax
         y = root.winfo_y() + deltay
         root.geometry(f"+{x}+{y}")
-
 def close_app():
     root.destroy()
 
@@ -222,7 +219,7 @@ def scroll_to_bottom():
 def action_nhap_nganh():
     create_bubble(
         scrollable_frame,
-        "Chatbot: Bạn muốn tìm trường theo ngành gì?",
+        f"Chatbot: Bạn muốn xét tuyển vào ngành nào? (Các ngành có trong hệ thống: {', '.join(nganh_hoc)})",
         "#3A3B3C",
         "#E4E6EB",
         "left"
@@ -265,13 +262,21 @@ def action_nhap_diem_so():
 def step2_nhap_diem(event=None):
     global temp_score, temp_khoi
 
-    user_text = entry.get().strip().upper()
+    user_text = entry.get().strip()
     entry.delete(0, tk.END)
 
     create_bubble(scrollable_frame, user_text, "#005CFF", "white", "right")
-    match = re.search(r"(\d+[.,]?\d*)", user_text)
+    match = re.search(r"(-?\d+[.,]?\d*)", user_text)
     if match:
         temp_score = float(match.group(1).replace(",", "."))
+        if temp_score < 0 or temp_score > 30:
+            create_bubble(
+                scrollable_frame,
+                "Chatbot: Điểm phải trong khoảng từ 0 đến 30! Vui lòng nhập lại.",
+                "#3A3B3C", "#E4E6EB", "left"
+            )
+            entry.bind("<Return>", step2_nhap_diem)
+            return
     else:
         create_bubble(
             scrollable_frame,
@@ -280,10 +285,10 @@ def step2_nhap_diem(event=None):
         )
         entry.bind("<Return>", send_message)
         return
-
+    
     create_bubble(
         scrollable_frame,
-        f"Chatbot: Bạn xét tuyển theo khối nào? (Các khối có trong hệ thống: {', '.join(tat_ca_khoi)})",
+        f"Chatbot: Bạn xét tuyển theo khối nào? (Các khối có trong hệ thống: A00:Toán-Lý-Hóa, A01:Toán-Lý-Anh, C00:Văn-Sử-Địa, D01:Toán-Văn-Anh, B00:Toán-Hóa-Sinh)",
         "#3A3B3C", "#E4E6EB", "left"
     )
 
@@ -436,7 +441,7 @@ def create_bubble(master, text, bg_color, fg_color, side="left"):
     frame.pack(fill="x", pady=5)
     bubble_canvas = tk.Canvas(frame, bg="#242526", highlightthickness=0, height=0)
     bubble_canvas.pack(anchor="e" if side == "right" else "w", padx=10)
-    max_width = 350 
+    max_width = 450 
     
     text_id = bubble_canvas.create_text(
         15, 12, 
